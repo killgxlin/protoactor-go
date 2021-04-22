@@ -4,6 +4,7 @@ module github.com/AsynkronIT/protoactor-go
 replace google.golang.org/grpc => google.golang.org/grpc v1.26.0
 
 require (
+	github.com/AsynkronIT/goconsole v0.0.0-20160504192649-bfa12eebf716
 	github.com/Workiva/go-datastructures v1.0.53
 	github.com/armon/go-metrics v0.3.0 // indirect
 	github.com/cespare/xxhash v1.1.0
