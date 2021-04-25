@@ -30,8 +30,8 @@ s->c
 改进
 c->s
 	bind caster
-	caster CMD
 	unbind caster
+	caster CMD
 s->c
 	caster bind ok
 	caster notify state:initing
@@ -44,12 +44,75 @@ s->c
 // 	msg string
 // }
 
+// --------------------------------------------------------------------------------
 type CliSessionActor struct {
-	sub   *eventstream.Subscription
-	binds map[string]bool
-	c     net.Conn
+	sub        *eventstream.Subscription
+	binds      map[string]bool
+	c          net.Conn
+	lastPlugin string
 }
 
+func (csa *CliSessionActor) sendToClient(msg string) {
+	if csa.c == nil {
+		log.Panicln("cli conn not exist")
+	}
+	csa.c.Write([]byte(msg + "\n"))
+}
+
+func (csa *CliSessionActor) bind(context actor.Context, pluginName string) {
+	val, ok := actorRegistery.Load("plugin:" + pluginName)
+	if !ok {
+		csa.sendToClient("error plugin:" + pluginName + " not exist")
+		return
+	}
+
+	csa.binds[pluginName] = true
+	csa.sendToClient("plugin:" + pluginName + " bound")
+
+	pid := val.(*actor.PID)
+	context.Request(pid, &evtPluginBind{false})
+	csa.lastPlugin = pluginName
+}
+
+func (csa *CliSessionActor) unbind(context actor.Context, pluginName string) {
+	val, ok := actorRegistery.Load("plugin:" + pluginName)
+	if !ok {
+		csa.sendToClient("error plugin:" + pluginName + " not exist")
+		return
+	}
+
+	delete(csa.binds, pluginName)
+	csa.sendToClient("plugin:" + pluginName + " unbound")
+
+	pid := val.(*actor.PID)
+	context.Request(pid, &evtPluginBind{true})
+	if csa.lastPlugin == pluginName {
+		csa.lastPlugin = ""
+	}
+}
+
+func (csa *CliSessionActor) unbindAll(context actor.Context) {
+	for pluginName := range csa.binds {
+		csa.unbind(context, pluginName)
+	}
+	csa.lastPlugin = ""
+}
+
+func (csa *CliSessionActor) sendToPlugin(context actor.Context, pluginName, msg string) {
+	val, ok := actorRegistery.Load("plugin:" + pluginName)
+	if !ok {
+		csa.sendToClient("error plugin:" + pluginName + " not exist")
+		return
+	}
+	if _, ok := csa.binds[pluginName]; !ok {
+		csa.sendToClient("error plugin:" + pluginName + " not bound")
+		return
+	}
+	pid := val.(*actor.PID)
+	context.Request(pid, &msgClientCommand{cmd: msg})
+}
+
+// 处理客户端消息
 func (csa *CliSessionActor) dealCliMessage(context actor.Context, msg string) {
 	args := strings.SplitN(msg, " ", 2)
 	log.Println(args)
@@ -58,57 +121,48 @@ func (csa *CliSessionActor) dealCliMessage(context actor.Context, msg string) {
 	}
 	cmd := args[0]
 	switch cmd {
-	case "b":
-		_, ok := actorRegistery.Load("plugin:" + args[1])
+	case "b", "bind":
+		csa.bind(context, args[1])
+	case "u", "unbind":
+		csa.unbind(context, args[1])
+	case "ch", "change":
+		_, ok := csa.binds[args[1]]
 		if !ok {
-			csa.c.Write([]byte("error plugin:" + args[1] + " not exist\n"))
+			csa.sendToClient("plugin " + args[1] + " not exist")
 			return
 		}
-		csa.binds[args[1]] = true
-		csa.c.Write([]byte("plugin:" + args[1] + " bound\n"))
-	case "u":
-		delete(csa.binds, args[1])
-		csa.c.Write([]byte(("plugin:" + args[1] + " unbound\n")))
+		csa.lastPlugin = args[1]
+		csa.sendToClient("change current plugin to " + args[1])
+	case "c", "current":
+		if csa.lastPlugin == "" {
+			csa.sendToClient("last plugin not set")
+			return
+		}
+		csa.sendToPlugin(context, csa.lastPlugin, args[1])
 	default:
-		val, ok := actorRegistery.Load("plugin:" + cmd)
-		if !ok {
-			csa.c.Write([]byte("error plugin:" + cmd + " not exist\n"))
-			return
-		}
-		if _, ok := csa.binds[cmd]; !ok {
-			csa.c.Write([]byte("error plugin:" + cmd + " not bound\n"))
-			return
-		}
-		pid := val.(*actor.PID)
-		context.Request(pid, &msgClientCommand{cmd: args[1]})
+		csa.sendToPlugin(context, cmd, args[1])
 	}
 }
 
 func (csa *CliSessionActor) Receive(context actor.Context) {
 	switch msg := context.Message().(type) {
 	case *actor.Started:
-		// csa.bw = bufio.NewWriter(csa.c)
+		csa.lastPlugin = ""
+		// 订阅消息
 		csa.sub = eventStream.Subscribe(func(evt interface{}) {
 			log.Println("got evt:", evt)
 			switch msg := evt.(type) {
-			case *msgPlugin:
-				// log.Println("1csa subscribe:", msg.msg, msg.pluginName, msg.msgType)
-				// ws.send
+			case *msgPlugin: // 只处理插件相关消息
 				if _, ok := csa.binds[msg.pluginName]; !ok {
 					return
 				}
-				// log.Println("2csa subscribe:", msg.msg, msg.pluginName, msg.msgType)
-				csa.c.Write([]byte(msg.pluginName + " " + msg.msgType + " " + msg.msg + "\n"))
-				// switch msg.msgType {
-				// case "notify":
-				// 	// log.Println("3csa subscribe:", msg.msg, msg.pluginName, msg.msgType)
-				// 	csa.c.Write([]byte(msg.pluginName + " " + msg.msgType + " " + msg.msg + "\n"))
-				// }
+				csa.sendToClient(msg.pluginName + " " + msg.msgType + " " + msg.msg)
 			}
 		})
 
+		// 读取客户端消息
 		go func() {
-			defer context.Poison(context.Self())
+			defer context.Poison(context.Self()) // 把自己关闭
 			br := bufio.NewReader(csa.c)
 			for line, _, err := br.ReadLine(); err == nil; line, _, err = br.ReadLine() {
 				str := string(line)
@@ -122,12 +176,14 @@ func (csa *CliSessionActor) Receive(context actor.Context) {
 	case *actor.Restarting:
 		csa.c.Close()
 	case *actor.Stopped:
+		csa.unbindAll(context)
 		eventStream.Unsubscribe(csa.sub)
 	case string:
 		csa.dealCliMessage(context, msg)
 	}
 }
 
+// --------------------------------------------------------------------------------
 type CliManagerActor struct {
 	l net.Listener
 	w sync.WaitGroup

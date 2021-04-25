@@ -8,6 +8,7 @@ import (
 	"github.com/AsynkronIT/protoactor-go/actor/middleware"
 )
 
+// --------------------------------------------------------------------------------
 type MierServiceActor struct {
 }
 

@@ -58,6 +58,20 @@ mier-service
 			process
 	ws-server
 		ws-session
+
+服务
+	?防火墙检查放行
+	?启动停止服务
+客户端
+	-处理连接
+插件
+	?客户端命令启动停止插件
+	-处理连接
+	?安装更新
+	?删除
+		应用卸载需要删除
+	?签名校验
+
 */
 
 func panicOnErr(err error) {

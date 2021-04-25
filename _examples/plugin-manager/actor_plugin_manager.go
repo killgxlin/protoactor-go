@@ -3,25 +3,31 @@ package main
 import (
 	"bufio"
 	gcontext "context"
-	"fmt"
 	"log"
 	"net"
 	"net/url"
+	"os/exec"
 	"strings"
-	"time"
 
 	"github.com/AsynkronIT/protoactor-go/actor"
 	"github.com/AsynkronIT/protoactor-go/actor/middleware"
 )
 
+// --------------------------------------------------------------------------------
 type PluginConfig struct {
+	binPath string
 }
 
 var pluginConfigs = map[string]*PluginConfig{
-	"caster":    {},
-	"wireguard": {},
+	"caster": {
+		binPath: "./plugins/plugin.exe",
+	},
+	"wireguard": {
+		binPath: "./plugins/plugin.exe",
+	},
 }
 
+// --------------------------------------------------------------------------------
 type PluginSessionActor struct {
 }
 
@@ -39,105 +45,166 @@ type msgClientCommand struct {
 	cmd string
 }
 
-type msgPluginActor struct {
+type evtPluginConn struct {
 	c net.Conn
 }
 
+type evtPluginCmdExit struct {
+	err error
+}
+
+type evtPluginBind struct {
+	isUnbind bool
+}
+
+type PluginStatus int
+
+const (
+	Idle      PluginStatus = 0
+	Launching PluginStatus = 1
+	Launched  PluginStatus = 2
+)
+
 type PluginActor struct {
-	name   string
-	config *PluginConfig
-	cancel gcontext.CancelFunc
-	c      net.Conn
+	name      string
+	config    *PluginConfig
+	cancel    gcontext.CancelFunc
+	c         net.Conn
+	pluginCmd *exec.Cmd
+	bindNum   int
 }
 
-func (p *PluginActor) fakeSession(context actor.Context, cmdStr string) {
-	args := strings.SplitN(cmdStr, " ", 2)
-	switch args[0] {
-	case "start":
-		if p.cancel != nil {
-			eventStream.Publish(&msgPlugin{pluginName: p.name, msgType: "notify", msg: "log:" + url.QueryEscape((cmdStr))})
-			return
-		}
-		ctx, cancel := gcontext.WithCancel(gcontext.TODO())
-		p.cancel = cancel
-		go func() {
-			ticker := time.NewTicker(500 * time.Millisecond)
-			cnt := 0
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					cnt++
-					eventStream.Publish(&msgPlugin{pluginName: p.name, msgType: "notify", msg: fmt.Sprint("tick:", cnt)})
-				}
-			}
-		}()
-	case "stop":
-		if p.cancel != nil {
-			p.cancel()
-			p.cancel = nil
-		}
+func (pa *PluginActor) getCmdStatus() PluginStatus {
+	switch {
+	case pa.pluginCmd == nil && pa.c != nil:
+		log.Panicln("actor status error")
+	case pa.pluginCmd == nil && pa.c == nil:
+		return Idle
+	case pa.pluginCmd != nil && pa.c == nil:
+		return Launching
+	case pa.pluginCmd != nil && pa.c != nil:
+		return Launched
 	}
+	return Idle
 }
 
-func (p *PluginActor) Receive(context actor.Context) {
+func (pa *PluginActor) launchCmd(context actor.Context) {
+	if pa.getCmdStatus() != Idle {
+		return
+	}
+
+	cmd := exec.Command(pa.config.binPath, pa.name, "8888")
+
+	binRunner := func() {
+		err := cmd.Run()
+		log.Println("actor process exit", err)
+		context.Request(context.Self(), &evtPluginCmdExit{err})
+	}
+
+	go binRunner()
+
+	pa.pluginCmd = cmd
+}
+
+func (pa *PluginActor) terminateCmd(context actor.Context) {
+	if pa.getCmdStatus() == Idle {
+		return
+	}
+
+	if pa.c != nil {
+		pa.c.Close()
+		pa.c = nil
+	} else {
+		pa.pluginCmd.Process.Kill()
+	}
+
+	pa.pluginCmd.Wait()
+	pa.pluginCmd = nil
+}
+
+func (pa *PluginActor) Receive(context actor.Context) {
 	switch msg := context.Message().(type) {
 	case *actor.Started:
-		actorRegistery.Store("plugin:"+p.name, context.Self())
-		eventStream.Publish(&msgPlugin{pluginName: p.name, msgType: "actor", msg: "started"})
+		pa.bindNum = 0
+		// pa.launchCmd(context)
+		actorRegistery.Store("plugin:"+pa.name, context.Self())
+		eventStream.Publish(&msgPlugin{pluginName: pa.name, msgType: "actor", msg: "started"})
 	case *actor.Stopping:
-		if p.c != nil {
-			p.c.Close()
-			p.c = nil
-		}
-		eventStream.Publish(&msgPlugin{pluginName: p.name, msgType: "actor", msg: "stopping"})
+		pa.terminateCmd(context)
+		eventStream.Publish(&msgPlugin{pluginName: pa.name, msgType: "actor", msg: "stopping"})
 	case *actor.Stopped:
-		actorRegistery.Delete("plugin:" + p.name)
-		eventStream.Publish(&msgPlugin{pluginName: p.name, msgType: "actor", msg: "stopped"})
+		actorRegistery.Delete("plugin:" + pa.name)
+		eventStream.Publish(&msgPlugin{pluginName: pa.name, msgType: "actor", msg: "stopped"})
 	case *actor.Restarting:
-		eventStream.Publish(&msgPlugin{pluginName: p.name, msgType: "actor", msg: "restarting"})
+		eventStream.Publish(&msgPlugin{pluginName: pa.name, msgType: "actor", msg: "restarting"})
 	case *msgClientCommand:
 		cmdStr, err := url.QueryUnescape(msg.cmd)
 		panicOnErr(err)
-		log.Println("recv cmdStr:", cmdStr, p.c)
-		if p.c == nil {
-			log.Println("p.c == nil")
-			eventStream.Publish(&msgPlugin{pluginName: p.name, msgType: "err", msg: "session not connected"})
+		log.Println("recv cmdStr:", cmdStr, pa.c)
+
+		if pa.pluginCmd == nil {
+			eventStream.Publish(&msgPlugin{pluginName: pa.name, msgType: "err", msg: "plugin cmd not start"})
 			return
 		}
-		p.c.Write([]byte(cmdStr + "\n"))
-		// eventStream.Publish(&msgPlugin{pluginName: p.name, msgType: "notify", msg: "log:" + url.QueryEscape((cmdStr))})
-		// p.fakeSession(context, cmdStr)
-	case *msgPluginActor:
-		log.Println("recv Conn:", msg)
-		if p.c != nil {
-			p.c.Close()
-			p.c = nil
+
+		if pa.c == nil {
+			eventStream.Publish(&msgPlugin{pluginName: pa.name, msgType: "err", msg: "session not connected"})
+			return
 		}
-		p.c = msg.c
-		if p.c != nil {
+
+		// write to plugin process
+		pa.c.Write([]byte(cmdStr + "\n"))
+	case *evtPluginConn:
+		if pa.c != nil {
+			pa.c.Close()
+			pa.c = nil
+		}
+		pa.c = msg.c
+		if pa.c != nil {
 			log.Println("-----------")
 			go func() {
 				defer func() {
-					context.Request(context.Self(), &msgPluginActor{})
+					context.Request(context.Self(), &evtPluginConn{})
 				}()
-				eventStream.Publish(&msgPlugin{pluginName: p.name, msgType: "actor", msg: "got connection"})
-				br := bufio.NewReader(p.c)
+				eventStream.Publish(&msgPlugin{pluginName: pa.name, msgType: "actor", msg: "got connection"})
+				br := bufio.NewReader(pa.c)
 				for line, _, err := br.ReadLine(); err == nil; line, _, err = br.ReadLine() {
 					str := string(line)
 					log.Println("recv str from plugin: ", str)
-					context.Send(context.Self(), str)
+					context.Request(context.Self(), str)
 				}
 			}()
 			return
 		}
-		eventStream.Publish(&msgPlugin{pluginName: p.name, msgType: "actor", msg: "lose connection"})
+		eventStream.Publish(&msgPlugin{pluginName: pa.name, msgType: "actor", msg: "lose connection"})
+	case *evtPluginCmdExit:
+		pa.terminateCmd(context)
+		if pa.bindNum > 0 {
+			pa.launchCmd(context)
+		}
+
+	case *evtPluginBind:
+		if msg.isUnbind {
+			pa.bindNum--
+		} else {
+			pa.bindNum++
+		}
+		switch {
+		case pa.bindNum > 0 && pa.getCmdStatus() == Idle:
+			pa.launchCmd(context)
+		case pa.bindNum == 0 && pa.getCmdStatus() != Idle:
+			pa.terminateCmd(context)
+		case pa.bindNum > 0 && pa.getCmdStatus() != Idle:
+		default:
+			log.Fatalln("state error bindNum:", pa.bindNum)
+		}
+
 	case string:
-		eventStream.Publish(&msgPlugin{pluginName: p.name, msgType: "notify", msg: url.QueryEscape(msg)})
+		eventStream.Publish(&msgPlugin{pluginName: pa.name, msgType: "notify", msg: url.QueryEscape(msg)})
 	}
 }
 
+// --------------------------------------------------------------------------------
 type PluginManagerActor struct {
 	pluginPIDs map[string]*actor.PID
 	l          net.Listener
@@ -176,7 +243,7 @@ func (pma *PluginManagerActor) Receive(context actor.Context) {
 					return
 				}
 
-				context.Request(pid, &msgPluginActor{c: c})
+				context.Request(pid, &evtPluginConn{c: c})
 			}
 		}()
 		pma.l = l
