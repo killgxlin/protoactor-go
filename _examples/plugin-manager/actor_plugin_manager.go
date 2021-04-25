@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	gcontext "context"
+	"fmt"
 	"log"
 	"net"
 	"net/url"
@@ -72,6 +73,7 @@ type PluginActor struct {
 	c         net.Conn
 	pluginCmd *exec.Cmd
 	bindNum   int
+	port      int
 }
 
 func (pa *PluginActor) getCmdStatus() PluginStatus {
@@ -93,7 +95,7 @@ func (pa *PluginActor) launchCmd(context actor.Context) {
 		return
 	}
 
-	cmd := exec.Command(pa.config.binPath, pa.name, "8888")
+	cmd := exec.Command(pa.config.binPath, pa.name, fmt.Sprint(pa.port))
 
 	binRunner := func() {
 		err := cmd.Run()
@@ -211,18 +213,21 @@ type PluginManagerActor struct {
 }
 
 func (pma *PluginManagerActor) Receive(context actor.Context) {
-	switch msg := context.Message().(type) {
+	switch context.Message().(type) {
 	case *actor.Started:
-		_ = msg
+		port, err := findAvailablePort(9000, 9999)
+		panicOnErr(err)
+		log.Println("found available port for pma", port)
+		l, e := net.Listen("tcp4", fmt.Sprintf("localhost:%d", port))
+		panicOnErr(e)
+
 		for name, config := range pluginConfigs {
-			props := actor.PropsFromProducer(func() actor.Actor { return &PluginActor{name: name, config: config, cancel: nil} }).WithReceiverMiddleware(middleware.Logger)
+			props := actor.PropsFromProducer(func() actor.Actor { return &PluginActor{name: name, config: config, cancel: nil, port: port} }).WithReceiverMiddleware(middleware.Logger)
 			pid, err := context.SpawnNamed(props, "Plugin:"+name)
 			panicOnErr(err)
 			pma.pluginPIDs[name] = pid
 		}
 
-		l, e := net.Listen("tcp4", "localhost:8888")
-		panicOnErr(e)
 		go func() {
 			defer context.Poison(context.Self())
 			for {

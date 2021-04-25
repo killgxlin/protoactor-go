@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"log"
 	"net"
 	"strings"
@@ -46,10 +47,10 @@ s->c
 
 // --------------------------------------------------------------------------------
 type CliSessionActor struct {
-	sub        *eventstream.Subscription
-	binds      map[string]bool
-	c          net.Conn
-	lastPlugin string
+	sub       *eventstream.Subscription
+	binds     map[string]bool
+	c         net.Conn
+	curPlugin string
 }
 
 func (csa *CliSessionActor) sendToClient(msg string) {
@@ -71,7 +72,7 @@ func (csa *CliSessionActor) bind(context actor.Context, pluginName string) {
 
 	pid := val.(*actor.PID)
 	context.Request(pid, &evtPluginBind{false})
-	csa.lastPlugin = pluginName
+	csa.curPlugin = pluginName
 }
 
 func (csa *CliSessionActor) unbind(context actor.Context, pluginName string) {
@@ -81,13 +82,18 @@ func (csa *CliSessionActor) unbind(context actor.Context, pluginName string) {
 		return
 	}
 
+	if _, ok := csa.binds[pluginName]; !ok {
+		csa.sendToClient("error plugin:" + pluginName + " not bound")
+		return
+	}
+
 	delete(csa.binds, pluginName)
 	csa.sendToClient("plugin:" + pluginName + " unbound")
 
 	pid := val.(*actor.PID)
 	context.Request(pid, &evtPluginBind{true})
-	if csa.lastPlugin == pluginName {
-		csa.lastPlugin = ""
+	if csa.curPlugin == pluginName {
+		csa.curPlugin = ""
 	}
 }
 
@@ -95,7 +101,7 @@ func (csa *CliSessionActor) unbindAll(context actor.Context) {
 	for pluginName := range csa.binds {
 		csa.unbind(context, pluginName)
 	}
-	csa.lastPlugin = ""
+	csa.curPlugin = ""
 }
 
 func (csa *CliSessionActor) sendToPlugin(context actor.Context, pluginName, msg string) {
@@ -122,23 +128,30 @@ func (csa *CliSessionActor) dealCliMessage(context actor.Context, msg string) {
 	cmd := args[0]
 	switch cmd {
 	case "b", "bind":
-		csa.bind(context, args[1])
+		pluginName := csa.curPlugin
+		if len(args) > 1 {
+			pluginName = args[1]
+		}
+		csa.bind(context, pluginName)
 	case "u", "unbind":
-		csa.unbind(context, args[1])
+		pluginName := csa.curPlugin
+		if len(args) > 1 {
+			pluginName = args[1]
+		}
+		csa.unbind(context, pluginName)
 	case "ch", "change":
-		_, ok := csa.binds[args[1]]
-		if !ok {
-			csa.sendToClient("plugin " + args[1] + " not exist")
+		if _, ok := csa.binds[args[1]]; !ok {
+			csa.sendToClient("plugin " + args[1] + " not bound")
 			return
 		}
-		csa.lastPlugin = args[1]
+		csa.curPlugin = args[1]
 		csa.sendToClient("change current plugin to " + args[1])
 	case "c", "current":
-		if csa.lastPlugin == "" {
-			csa.sendToClient("last plugin not set")
+		if csa.curPlugin == "" {
+			csa.sendToClient("current plugin not set")
 			return
 		}
-		csa.sendToPlugin(context, csa.lastPlugin, args[1])
+		csa.sendToPlugin(context, csa.curPlugin, args[1])
 	default:
 		csa.sendToPlugin(context, cmd, args[1])
 	}
@@ -147,7 +160,7 @@ func (csa *CliSessionActor) dealCliMessage(context actor.Context, msg string) {
 func (csa *CliSessionActor) Receive(context actor.Context) {
 	switch msg := context.Message().(type) {
 	case *actor.Started:
-		csa.lastPlugin = ""
+		csa.curPlugin = ""
 		// 订阅消息
 		csa.sub = eventStream.Subscribe(func(evt interface{}) {
 			log.Println("got evt:", evt)
@@ -192,7 +205,10 @@ type CliManagerActor struct {
 func (cma *CliManagerActor) Receive(context actor.Context) {
 	switch context.Message().(type) {
 	case *actor.Started:
-		l, e := net.Listen("tcp4", "localhost:9999")
+		port, err := findAvailablePort(8000, 8999)
+		panicOnErr(err)
+		log.Println("found available port for cma", port)
+		l, e := net.Listen("tcp4", fmt.Sprintf("localhost:%d", port))
 		panicOnErr(e)
 		cma.w.Add(1)
 		go func() {
