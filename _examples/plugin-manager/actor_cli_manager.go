@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"log"
 	"net"
 	"strings"
@@ -205,10 +204,10 @@ type CliManagerActor struct {
 func (cma *CliManagerActor) Receive(context actor.Context) {
 	switch context.Message().(type) {
 	case *actor.Started:
-		port, err := findAvailablePort(8000, 8999)
+		addr, err := findAvailableAddr(8000, 8999)
 		panicOnErr(err)
-		log.Println("found available port for cma", port)
-		l, e := net.Listen("tcp4", fmt.Sprintf("localhost:%d", port))
+		log.Println("found available addr for cma", addr)
+		l, e := net.Listen("tcp4", addr)
 		panicOnErr(e)
 		cma.w.Add(1)
 		go func() {

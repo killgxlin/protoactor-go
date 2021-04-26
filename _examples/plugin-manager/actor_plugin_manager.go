@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/url"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/AsynkronIT/protoactor-go/actor"
@@ -99,7 +100,7 @@ func (pa *PluginActor) launchCmd(context actor.Context) {
 
 	binRunner := func() {
 		err := cmd.Run()
-		log.Println("actor process exit", err)
+		log.Printf("actor %s process exit %v", pa.name, err)
 		context.Request(context.Self(), &evtPluginCmdExit{err})
 	}
 
@@ -215,14 +216,16 @@ type PluginManagerActor struct {
 func (pma *PluginManagerActor) Receive(context actor.Context) {
 	switch context.Message().(type) {
 	case *actor.Started:
-		port, err := findAvailablePort(9000, 9999)
+		addr, err := findAvailableAddr(9000, 9999)
 		panicOnErr(err)
-		log.Println("found available port for pma", port)
-		l, e := net.Listen("tcp4", fmt.Sprintf("localhost:%d", port))
+		log.Println("found available addr for pma", addr)
+		l, e := net.Listen("tcp4", addr)
 		panicOnErr(e)
 
+		port, _ := strconv.ParseInt(strings.Split(addr, ":")[1], 10, 64)
+
 		for name, config := range pluginConfigs {
-			props := actor.PropsFromProducer(func() actor.Actor { return &PluginActor{name: name, config: config, cancel: nil, port: port} }).WithReceiverMiddleware(middleware.Logger)
+			props := actor.PropsFromProducer(func() actor.Actor { return &PluginActor{name: name, config: config, cancel: nil, port: int(port)} }).WithReceiverMiddleware(middleware.Logger)
 			pid, err := context.SpawnNamed(props, "Plugin:"+name)
 			panicOnErr(err)
 			pma.pluginPIDs[name] = pid

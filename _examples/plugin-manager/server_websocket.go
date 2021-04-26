@@ -224,7 +224,7 @@ var l net.Listener
 var c io.ReadWriteCloser
 
 func Listen(netName, addr string) (net.Listener, error) {
-	return net.Listen("tcp4", "localhost:9999")
+	return net.Listen("tcp4", "127.0.0.1:9999")
 }
 
 type WSListener struct {

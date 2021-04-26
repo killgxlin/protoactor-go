@@ -17,7 +17,7 @@ func panicOnErr(e error) {
 }
 
 func main() {
-	c, e := net.Dial("tcp", "localhost:"+os.Args[2])
+	c, e := net.Dial("tcp", "127.0.0.1:"+os.Args[2])
 	panicOnErr(e)
 	defer c.Close()
 
