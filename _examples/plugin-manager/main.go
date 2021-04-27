@@ -1,78 +1,16 @@
 package main
 
 import (
+	"fmt"
 	"log"
+	"os"
 	"sync"
 
-	console "github.com/AsynkronIT/goconsole"
 	"github.com/AsynkronIT/protoactor-go/actor"
 	"github.com/AsynkronIT/protoactor-go/actor/middleware"
 	"github.com/AsynkronIT/protoactor-go/eventstream"
+	"github.com/kardianos/service"
 )
-
-/*
-调研方向
-	启动销毁
-	调用方式
-		消息
-			ctx.Send
-			ctx.Request
-		rpc
-			同步
-				future.wait
-			异步
-				ctx.AwaitFuture
-		eventstream
-			subscribe
-			publish
-	日志
-
-
-确定对象
-确定对象通信-输入输出
-用例
-	启动
-		初始化插件管理器
-			初始化插件
-		初始化CliManager
-	检查插件更新
-	客户端上线
-		客户端绑定插件
-		获取插件状态
-	客户端绑定插件
-	客户端发命令
-	插件状态变更同步客户端
-	关闭
-		停止CliManager
-			杀掉所有client
-		停止插件管理器
-			停止插件
-				停止进程
-
-
-mier-service
-	event-stream
-	plugin-manager
-		plugin
-			plugin-session
-			process
-	ws-server
-		ws-session
-
-服务
-	?防火墙检查放行
-	?启动停止服务
-客户端
-	-处理连接
-插件
-	?客户端命令启动停止插件
-	-处理连接
-	?安装更新
-	?删除
-		应用卸载需要删除
-	?签名校验
-
-*/
 
 func panicOnErr(err error) {
 	if err != nil {
@@ -82,13 +20,70 @@ func panicOnErr(err error) {
 
 var eventStream = eventstream.NewEventStream()
 var actorRegistery sync.Map
+var mierSvcPid *actor.PID
+var system = actor.NewActorSystem()
 
-func main() {
-	system := actor.NewActorSystem()
+type program struct{}
+
+func (p *program) Start(s service.Service) error {
 	props := actor.PropsFromProducer(func() actor.Actor { return &MierServiceActor{} }).WithReceiverMiddleware(middleware.Logger)
 	pid, err := system.Root.SpawnNamed(props, "MierServiceActor")
-	panicOnErr(err)
-	_, _ = console.ReadLine()
-	system.Root.Stop(pid)
-	_, _ = console.ReadLine()
+	if err != nil {
+		return err
+	}
+
+	mierSvcPid = pid
+	return nil
+}
+func (p *program) run() {
+	// Do work here
+}
+func (p *program) Stop(s service.Service) error {
+	if mierSvcPid == nil {
+		return fmt.Errorf("mier service actor is not started")
+	}
+	return system.Root.StopFuture(mierSvcPid).Wait()
+}
+
+func main() {
+	ensureFireWall("plugin-manager", os.Args[0])
+
+	svcConfig := &service.Config{
+		Name:        "xmpm",
+		DisplayName: "xiaomi plugins manage service",
+		Description: "This is xiaomi plugins manage service.",
+	}
+
+	prg := &program{}
+	s, err := service.New(prg, svcConfig)
+	if err != nil {
+		log.Fatal(err)
+	}
+	logger, err := s.Logger(nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if len(os.Args) == 1 {
+		err = s.Run()
+		if err != nil {
+			logger.Error(err)
+		}
+		return
+	}
+
+	switch os.Args[1] {
+	case "i", "init":
+		s.Install()
+		s.Start()
+	case "u", "uninit":
+		s.Stop()
+		s.Uninstall()
+	default:
+		err = s.Run()
+		if err != nil {
+			logger.Error(err)
+		}
+	}
+
 }

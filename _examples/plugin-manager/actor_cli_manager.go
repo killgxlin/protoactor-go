@@ -12,38 +12,6 @@ import (
 	"github.com/AsynkronIT/protoactor-go/eventstream"
 )
 
-/*
-协议
-c->s
-	init##PLUGINNAME: 初始化插件
-	close: 啥也不做
-	exit: 销毁插件
-	cmd##CMD|ARG1...: 发给插件的命令
-	quit: 断开连接
-s->c
-	error:1|2|3|OTHERCODE
-	data:localip:LOCALIP|roomname:ROOMNAME|tvip:TVIP
-	state:STARTING|
-	log:
-	cmd: 给插件管理器执行的命令
-
-改进
-c->s
-	bind caster
-	unbind caster
-	caster CMD
-s->c
-	caster bind ok
-	caster notify state:initing
-	caster notify state:started
-	caster notify date:....
-	caster notify log:....
-*/
-
-// type msgWebSocket struct {
-// 	msg string
-// }
-
 // --------------------------------------------------------------------------------
 type CliSessionActor struct {
 	sub       *eventstream.Subscription
