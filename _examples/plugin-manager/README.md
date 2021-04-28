@@ -1,33 +1,47 @@
 # 客户端协议
 ## 协议
-### c->s
+### c->S
 ```
-b|bind caster
-u|unbind caster
-caster CMD
+cs b|bind caster
+cs u|unbind caster
+cs caster CMD
+```
+### p->c
+```
+pc state:initing			// 通知cli当前状态
+pc state:started
+pc date:....
+pc log:....
+```
+### s->p
+```
+sp cmd						// 转发cli的命令
+sp query					// 查询当前所有状态
+```
+### p->s
+```
+ps idle						// 空闲状态，可以切换
+ps working					// 工作中，不可切换
 ```
 ### s->c
 ```
-caster notify state:initing
-caster notify state:started
-caster notify date:....
-caster notify log:....
+sc caster actor started		// caster 相关的actor状态
+sc caster actor stopping
+sc caster actor stopped
 
-caster actor started
-caster actor stopping
-caster actor stopped
+sc caster artifact updating		// caster 相关的可执行文件状态
+sc caster artifact checking
+sc caster artifact downloading
+sc caster artifact decompressing
+sc caster artifact updated
+sc caster artifact uninstalling
+sc caster artifact uninstalled
 
-caster binary installing
-caster binary checking
-caster binary downloading
-caster binary decompressing
-caster binary installed
-caster binary launching
-caster binary launched
-caster binary terminating
-caster binary terminated
-caster binary uninstalling
-caster binary uninstalled
+sc caster process launching		// caster 相关的进程状态
+sc caster process launched
+sc caster process terminating
+sc caster process terminated
+
 ```
 
 ## TODO
@@ -61,11 +75,15 @@ https://url.path.to/plugins
 ```
 plugin-root
 	caster
+		latest.yml
+		alpha.yml
+		beta.yml
 		?.?.?
 			manifest.yml
 			plugin.exe
 			*
 		?.?.?
+			manifest.yml
 			plugin.exe
 			*
 ```
