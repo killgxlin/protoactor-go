@@ -136,7 +136,7 @@ func (csa *CliSessionActor) Receive(context actor.Context) {
 				if _, ok := csa.binds[msg.pluginName]; !ok {
 					return
 				}
-				csa.sendToClient(msg.pluginName + " " + msg.msgType + " " + msg.msg)
+				csa.sendToClient(msg.pluginName + " " + string(msg.msgType) + " " + msg.msg)
 			}
 		})
 

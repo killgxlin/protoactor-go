@@ -69,7 +69,7 @@ func (pma *PluginManagerActor) Receive(context actor.Context) {
 					return
 				}
 
-				context.Request(pid, &evtPluginConn{c: c})
+				context.Request(pid, &evtPluginConn{conn: c})
 			}
 		}()
 		pma.l = l

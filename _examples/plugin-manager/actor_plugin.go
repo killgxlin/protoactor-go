@@ -18,7 +18,7 @@ type msgClientCommand struct {
 }
 
 type evtPluginConn struct {
-	c net.Conn
+	conn net.Conn
 }
 
 type evtPluginCmdExit struct {
@@ -41,7 +41,7 @@ type PluginActor struct {
 	name      string
 	config    *PluginConfig
 	cancel    gcontext.CancelFunc
-	c         net.Conn
+	conn      net.Conn
 	pluginCmd *exec.Cmd
 	bindNum   int
 	port      int
@@ -49,13 +49,13 @@ type PluginActor struct {
 
 func (pa *PluginActor) getCmdStatus() PluginStatus {
 	switch {
-	case pa.pluginCmd == nil && pa.c != nil:
+	case pa.pluginCmd == nil && pa.conn != nil:
 		log.Panicln("actor status error")
-	case pa.pluginCmd == nil && pa.c == nil:
+	case pa.pluginCmd == nil && pa.conn == nil:
 		return Idle
-	case pa.pluginCmd != nil && pa.c == nil:
+	case pa.pluginCmd != nil && pa.conn == nil:
 		return Launching
-	case pa.pluginCmd != nil && pa.c != nil:
+	case pa.pluginCmd != nil && pa.conn != nil:
 		return Launched
 	}
 	return Idle
@@ -77,6 +77,7 @@ func (pa *PluginActor) launchCmd(context actor.Context) {
 	go binRunner()
 
 	pa.pluginCmd = cmd
+	pa.publish(Binary, "process launched")
 }
 
 func (pa *PluginActor) terminateCmd(context actor.Context) {
@@ -84,15 +85,20 @@ func (pa *PluginActor) terminateCmd(context actor.Context) {
 		return
 	}
 
-	if pa.c != nil {
-		pa.c.Close()
-		pa.c = nil
+	if pa.conn != nil {
+		pa.conn.Close()
+		pa.conn = nil
 	} else {
 		pa.pluginCmd.Process.Kill()
 	}
 
 	pa.pluginCmd.Wait()
 	pa.pluginCmd = nil
+	pa.publish(Binary, "process terminated")
+}
+
+func (pa *PluginActor) publish(msgType MsgType, msg string) {
+	eventStream.Publish(&msgPlugin{pluginName: pa.name, msgType: msgType, msg: msg})
 }
 
 func (pa *PluginActor) Receive(context actor.Context) {
@@ -100,45 +106,40 @@ func (pa *PluginActor) Receive(context actor.Context) {
 	case *actor.Started:
 		pa.bindNum = 0
 		actorRegistery.Store("plugin:"+pa.name, context.Self())
-		eventStream.Publish(&msgPlugin{pluginName: pa.name, msgType: "actor", msg: "started"})
+		pa.publish(Actor, "started")
 	case *actor.Stopping:
 		pa.terminateCmd(context)
-		eventStream.Publish(&msgPlugin{pluginName: pa.name, msgType: "actor", msg: "stopping"})
+		pa.publish(Actor, "stopping")
 	case *actor.Stopped:
 		actorRegistery.Delete("plugin:" + pa.name)
-		eventStream.Publish(&msgPlugin{pluginName: pa.name, msgType: "actor", msg: "stopped"})
+		pa.publish(Actor, "stopped")
 	case *actor.Restarting:
-		eventStream.Publish(&msgPlugin{pluginName: pa.name, msgType: "actor", msg: "restarting"})
+		pa.publish(Actor, "restarting")
 	case *msgClientCommand:
 		cmdStr, err := url.QueryUnescape(msg.cmd)
 		panicOnErr(err)
-		log.Println("recv cmdStr:", cmdStr, pa.c)
+		log.Println("recv cmdStr:", cmdStr, pa.conn)
 
-		if pa.pluginCmd == nil {
-			eventStream.Publish(&msgPlugin{pluginName: pa.name, msgType: "err", msg: "plugin cmd not start"})
+		if pa.getCmdStatus() != Launched {
+			pa.publish(Err, "plugin cmd not launched")
 			return
 		}
 
-		if pa.c == nil {
-			eventStream.Publish(&msgPlugin{pluginName: pa.name, msgType: "err", msg: "session not connected"})
-			return
-		}
-
-		pa.c.Write([]byte(cmdStr + "\n"))
+		pa.conn.Write([]byte(cmdStr + "\n"))
 	case *evtPluginConn:
-		if pa.c != nil {
-			pa.c.Close()
-			pa.c = nil
+		if pa.conn != nil {
+			pa.conn.Close()
+			pa.conn = nil
 		}
-		pa.c = msg.c
-		if pa.c != nil {
+		pa.conn = msg.conn
+		if pa.conn != nil {
 			log.Println("-----------")
 			go func() {
 				defer func() {
 					context.Request(context.Self(), &evtPluginConn{})
 				}()
-				eventStream.Publish(&msgPlugin{pluginName: pa.name, msgType: "actor", msg: "got connection"})
-				br := bufio.NewReader(pa.c)
+				pa.publish(Actor, "got connection")
+				br := bufio.NewReader(pa.conn)
 				for line, _, err := br.ReadLine(); err == nil; line, _, err = br.ReadLine() {
 					str := string(line)
 					log.Println("recv str from plugin: ", str)
@@ -147,7 +148,7 @@ func (pa *PluginActor) Receive(context actor.Context) {
 			}()
 			return
 		}
-		eventStream.Publish(&msgPlugin{pluginName: pa.name, msgType: "actor", msg: "lose connection"})
+		pa.publish(Actor, "lose connection")
 	case *evtPluginCmdExit:
 		pa.terminateCmd(context)
 		if pa.bindNum > 0 {
@@ -171,6 +172,6 @@ func (pa *PluginActor) Receive(context actor.Context) {
 		}
 
 	case string:
-		eventStream.Publish(&msgPlugin{pluginName: pa.name, msgType: "notify", msg: url.QueryEscape(msg)})
+		pa.publish(Plugin, url.QueryEscape(msg))
 	}
 }
