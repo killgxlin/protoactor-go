@@ -86,3 +86,73 @@ plugin-root
 			plugin.exe
 			*
 ```
+
+打包发布
+	数据
+		https://url.path.to/plugins
+			(alpha|beta|latest)[-(linux|mac)]?.yml
+			caster-?.?.?[-(linux|mac)].zip
+			wireguard-?.?.?[-(linux|mac)].zip
+		pluginSrcDir
+			caster
+				version
+			wireguard
+				version
+		pluginAssetsDir
+			caster
+			wireguard
+		buildCacheDir
+			caster-?.?.?[-(linux|mac)].zip
+			wireguard-?.?.?[-(linux|mac)].zip
+			publish plugins ?.?.? linux mac alpha
+				upload packages
+				fetch yaml
+				modify yaml
+				upload yaml
+
+	过程
+		打包
+			获得
+			编译二进制
+			签名
+			压缩
+			
+		发布
+			准备manifest
+			上传
+				先上传版本
+				再上传manifest
+			回滚
+				更新到对应版本的manifest
+
+plugin管理
+	数据
+		installDir
+			caster-?.?.?.zip
+		pluginCacheDir
+			caster
+				alpha.yml
+					version
+				beta.yml
+					version
+				latest.yml
+					version
+				?.?.?
+					manifest.yml
+					plugin.exe
+					*
+				?.?.?
+					manifest.yml
+					plugin.exe
+					*
+	过程
+		给cli的接口
+			bind(pluginName, minVersion)
+			cmd(pluginName, command)
+		给svc的接口
+			init(installDir, pluginCacheDir, channel)
+			restart(pluginName)
+			uninstall(pluginName)
+			checkUpdate(pluginName)
+				
+		
