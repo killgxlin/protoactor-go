@@ -12,18 +12,20 @@ caster notify state:initing
 caster notify state:started
 caster notify date:....
 caster notify log:....
+
 caster actor started
 caster actor stopping
 caster actor stopped
+
 caster binary installing
 caster binary checking
 caster binary downloading
 caster binary decompressing
 caster binary installed
-caster binary starting
-caster binary started
-caster binary exiting
-caster binary exited
+caster binary launching
+caster binary launched
+caster binary terminating
+caster binary terminated
 caster binary uninstalling
 caster binary uninstalled
 ```
