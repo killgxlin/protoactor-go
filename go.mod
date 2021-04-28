@@ -38,7 +38,7 @@ require (
 	github.com/hashicorp/golang-lru v0.5.3 // indirect
 	github.com/jonboulle/clockwork v0.2.2 // indirect
 	github.com/json-iterator/go v1.1.10 // indirect
-	github.com/kardianos/service v1.2.0 // indirect
+	github.com/kardianos/service v1.2.0
 	github.com/labstack/echo v3.3.10+incompatible
 	github.com/labstack/gommon v0.3.0 // indirect
 	github.com/modern-go/reflect2 v1.0.1 // indirect
@@ -55,7 +55,7 @@ require (
 	go.uber.org/zap v1.16.0 // indirect
 	golang.org/x/net v0.0.0-20201202161906-c7110b5ffcbb
 	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9
-	golang.org/x/text v0.3.6 // indirect
+	golang.org/x/text v0.3.6
 	golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba // indirect
 	google.golang.org/grpc v1.36.1
 	gopkg.in/couchbase/gocbcore.v7 v7.1.18 // indirect
