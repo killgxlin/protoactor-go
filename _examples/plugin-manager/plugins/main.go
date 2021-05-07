@@ -19,14 +19,12 @@ func panicOnErr(e error) {
 }
 
 func main() {
-	InitLogger("c:\\Myself\\code\\git\\protoactor-go\\_examples\\plugin-manager\\plugins\\")
-
 	var addr = flag.String("addr", "localhost:"+os.Args[2], "http service address")
 
 	u := url.URL{Scheme: "ws", Host: *addr, Path: "/pm"}
 	c, _, e := websocket.DefaultDialer.Dial(u.String(), nil)
 	if e != nil {
-		Logger.Errorf("dial:%v", e)
+		fmt.Printf("dial:%v", e)
 	}
 	defer c.Close()
 
@@ -87,7 +85,7 @@ func main() {
 		for {
 			_, message, err := c.ReadMessage()
 			if err != nil {
-				Logger.Errorf("read err:%v", err)
+				fmt.Printf("read err:%v", err)
 				fmt.Println("read:", err)
 				ch<-1
 				return
@@ -96,18 +94,16 @@ func main() {
 			msg := string(message)
 
 			cmd := strings.SplitN(msg, "##", 2)
-			Logger.Infof("msg:%v", cmd[0])
 
 			switch cmd[0] {
 			case "start":
 				if cancelFun != nil {
-					Logger.Info("already started")
+					fmt.Printf("already started")
 					writeMsg("already started")
 					continue
 				}
 				ctx, cancelFun = gcontext.WithCancel(gcontext.TODO())
 				go castRunner(ctx, ctrl)
-				Logger.Info("started")
 				writeMsg("started")
 			case "stop":
 				if cancelFun == nil {

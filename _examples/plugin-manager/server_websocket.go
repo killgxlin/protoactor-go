@@ -75,17 +75,6 @@ func (wsl *WSListener) init (cmd, addr string) error {
 	return ret
 }
 
-// func (wsl *WSListener) init (cmd, addr string) {
-// 	flag.Parse()
-// 	var address = flag.String("addr", addr, "http service address")
-// 	http.HandleFunc(fmt.Sprintf("/%s", cmd), wsl.echo)
-// 	http.ListenAndServe(*address, nil)
-	
-//     // go func() {
-// 	// 	http.ListenAndServe(*address, nil)
-// 	// }()
-// }
-
 // Accept waits for and returns the next connection to the listener.
 func (wsl *WSListener) Accept() (*WSConn, error) {
 	wsl.ctx, wsl.cancel = context.WithCancel(context.Background())
