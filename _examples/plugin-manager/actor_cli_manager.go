@@ -1,9 +1,9 @@
 package main
 
 import (
+	// "net"
 	"bufio"
 	"log"
-	"net"
 	"strings"
 	"sync"
 
@@ -16,7 +16,8 @@ import (
 type CliSessionActor struct {
 	sub       *eventstream.Subscription
 	binds     map[string]bool
-	c         net.Conn
+	c         *WSConn
+	// c         net.Conn
 	curPlugin string
 }
 
@@ -143,7 +144,9 @@ func (csa *CliSessionActor) Receive(context actor.Context) {
 		// 读取客户端消息
 		go func() {
 			defer context.Poison(context.Self()) // 把自己关闭
+
 			br := bufio.NewReader(csa.c)
+
 			for line, _, err := br.ReadLine(); err == nil; line, _, err = br.ReadLine() {
 				str := string(line)
 				log.Println("recv str from cli: ", str)
@@ -165,7 +168,8 @@ func (csa *CliSessionActor) Receive(context actor.Context) {
 
 // --------------------------------------------------------------------------------
 type CliManagerActor struct {
-	l net.Listener
+	l *WSListener
+	// l net.Listener
 	w sync.WaitGroup
 }
 
@@ -175,7 +179,7 @@ func (cma *CliManagerActor) Receive(context actor.Context) {
 		addr, err := findAvailableAddr(8000, 8999)
 		panicOnErr(err)
 		log.Println("found available addr for cma", addr)
-		l, e := net.Listen("tcp4", addr)
+		l, e := Listen("cli", addr)
 		panicOnErr(e)
 		cma.w.Add(1)
 		go func() {

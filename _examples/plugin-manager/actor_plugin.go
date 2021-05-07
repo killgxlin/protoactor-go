@@ -5,7 +5,6 @@ import (
 	gcontext "context"
 	"fmt"
 	"log"
-	"net"
 	"net/url"
 	"os/exec"
 
@@ -18,7 +17,8 @@ type msgClientCommand struct {
 }
 
 type evtPluginConn struct {
-	conn net.Conn
+	// conn net.Conn
+	conn *WSConn
 }
 
 type evtPluginCmdExit struct {
@@ -41,7 +41,8 @@ type PluginActor struct {
 	name      string
 	config    *PluginConfig
 	cancel    gcontext.CancelFunc
-	conn      net.Conn
+	// conn      net.Conn
+	conn 		*WSConn
 	pluginCmd *exec.Cmd
 	bindNum   int
 	port      int

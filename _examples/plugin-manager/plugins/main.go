@@ -1,13 +1,15 @@
 package main
 
 import (
-	"bufio"
 	gcontext "context"
 	"fmt"
-	"net"
 	"os"
 	"strings"
 	"time"
+	"net/url"
+	"flag"
+
+	"github.com/gorilla/websocket"
 )
 
 func panicOnErr(e error) {
@@ -17,13 +19,21 @@ func panicOnErr(e error) {
 }
 
 func main() {
-	c, e := net.Dial("tcp", "127.0.0.1:"+os.Args[2])
-	panicOnErr(e)
+	InitLogger("c:\\Myself\\code\\git\\protoactor-go\\_examples\\plugin-manager\\plugins\\")
+
+	var addr = flag.String("addr", "localhost:"+os.Args[2], "http service address")
+
+	u := url.URL{Scheme: "ws", Host: *addr, Path: "/pm"}
+	c, _, e := websocket.DefaultDialer.Dial(u.String(), nil)
+	if e != nil {
+		Logger.Errorf("dial:%v", e)
+	}
 	defer c.Close()
 
 	writeMsg := func(msg string) {
-		c.Write([]byte(msg + "\n"))
+		c.WriteMessage(websocket.TextMessage, []byte(msg+"\n"))
 	}
+
 	writeMsg(os.Args[1])
 
 	castRunner := func(ctx gcontext.Context, ctrl chan string) {
@@ -69,32 +79,53 @@ func main() {
 	}
 	defer cancelCast()
 
-	br := bufio.NewReader(c)
-	for line, _, err := br.ReadLine(); err == nil; line, _, err = br.ReadLine() {
-		msg := string(line)
-		cmd := strings.SplitN(msg, "##", 2)
-		switch cmd[0] {
-		case "start":
-			if cancelFun != nil {
-				writeMsg("already started")
-				continue
+	ch := make(chan int, 1)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			_, message, err := c.ReadMessage()
+			if err != nil {
+				Logger.Errorf("read err:%v", err)
+				fmt.Println("read:", err)
+				ch<-1
+				return
 			}
-			ctx, cancelFun = gcontext.WithCancel(gcontext.TODO())
-			go castRunner(ctx, ctrl)
-			writeMsg("started")
-		case "stop":
-			if cancelFun == nil {
-				writeMsg("not started")
-				continue
+
+			msg := string(message)
+
+			cmd := strings.SplitN(msg, "##", 2)
+			Logger.Infof("msg:%v", cmd[0])
+
+			switch cmd[0] {
+			case "start":
+				if cancelFun != nil {
+					Logger.Info("already started")
+					writeMsg("already started")
+					continue
+				}
+				ctx, cancelFun = gcontext.WithCancel(gcontext.TODO())
+				go castRunner(ctx, ctrl)
+				Logger.Info("started")
+				writeMsg("started")
+			case "stop":
+				if cancelFun == nil {
+					writeMsg("not started")
+					continue
+				}
+				cancelCast()
+				writeMsg("stopped")
+			case "pause":
+				ctrl <- "pause"
+				writeMsg("paused")
+			case "resume":
+				ctrl <- "resume"
+				writeMsg("resumed")
 			}
-			cancelCast()
-			writeMsg("stopped")
-		case "pause":
-			ctrl <- "pause"
-			writeMsg("paused")
-		case "resume":
-			ctrl <- "resume"
-			writeMsg("resumed")
 		}
-	}
+	}()
+
+
+	<-ch
 }

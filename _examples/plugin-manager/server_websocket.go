@@ -3,241 +3,106 @@ package main
 import (
 	"io"
 	"net"
+	"net/http"
+    "context"
+	"fmt"
+	"bytes"
+	// "flag"
+	"time"
+
+	"github.com/gorilla/websocket"
 )
-
-/*
-type PluginInfo struct {
-	name string
-	proc string
-	Auth string
-	conn *websocket.Conn
-}
-
-var srv *http.Server
-var exit = false
-
-var OsName string
-
-var TextMessage = 1
-
-var encodeType = "0"
-
-var upgrader = websocket.Upgrader{} // use default options
-
-func base64Encode(src string) string {
-	return base64.StdEncoding.EncodeToString([]byte(src))
-}
-
-func base64Decode(src string) string {
-	decodeBytes, _ := base64.StdEncoding.DecodeString(src)
-	return string(decodeBytes)
-}
-
-var listClient = make(map[string]PluginInfo)
-
-func echo(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithCancel(context.Background())
-	ws, err := upgrader.Upgrade(w, r, nil)
-	var plugin_name string = ""
-
-	empty := func() {
-		delete(listClient, plugin_name)
-		plugin_name = ""
-	}
-
-	quit := func() {
-		Logger.Info("echo websocket客户端连接断开...")
-		ws.Close()
-		PluginExit(plugin_name)
-		empty()
-		cancel()
-	}
-
-	if err != nil {
-		Logger.Errorf("websocket upgrader.Upgrade error: %s", err)
-		return
-	}
-	defer quit()
-	Logger.Info("echo websocket客户端连接...")
-	// inited := false
-	for {
-		_, message, err := ws.ReadMessage()
-		if err != nil {
-			Logger.Errorf("websocket ReadMessage error: %s", err)
-			return
-		}
-
-		Logger.Infof("read from client, %s", string(message))
-		// if !inited && strings.HasPrefix(string(message), "Hello!") {
-		//     inited = true
-		//     ws.WriteMessage(TextMessage, []byte("is conneted"))
-
-		//     encodeType = string(message)[6:]
-		//     Logger.Infof("encodeType %s", encodeType)
-		//     continue
-		// }
-
-		// decode := strings.Split(string(message), "##")
-		// if decode[0] == "1" {
-		//     decodeMsg = base64Decode(decode[1])
-		// }
-		// Logger.Infof("read from client, %s", decodeMsg)
-
-		decodeMsg := string(message)
-		if decodeMsg == "Hello!" {
-			ws.WriteMessage(TextMessage, []byte("is conneted"))
-			continue
-		} else if decodeMsg == "quit" {
-			return
-		}
-
-		s := strings.Split(decodeMsg, "##")
-		if len(s) <= 1 {
-			sendMsgToClient(ws, "write cmd error")
-
-			continue
-		}
-
-		switch {
-		case s[0] == "init":
-			if plugin_name != "" {
-				sendMsgToClient(ws, plugin_name+":is inited")
-				continue
-			}
-			if _, ok := listClient[s[1]]; ok {
-				sendMsgToClient(ws, s[1]+" is exist")
-				continue
-			}
-
-			plugin_name = s[1]
-			go PluginsManager(ctx, plugin_name, ws)
-		case s[0] == "close":
-			Logger.Infof("close %s\n", plugin_name)
-			PluginExit(plugin_name)
-			empty()
-		// case s[0] == "status":
-		//     Logger.Infof("status %s\n", s[1])
-		//     if _,ok :=listClient[s[1]]; ok!=false {
-		//         if listClient[s[1]].conn != nil {
-		//             listClient[plugin_name].conn.WriteMessage(TextMessage, []byte("plugins is inited"))
-		//             return
-		//         }
-		//     }
-		//     listClient[plugin_name].conn.WriteMessage(TextMessage, []byte("plugins is not inited"))
-		//     return
-		case s[0] == "cmd":
-			ret := SendCommandToPlugin(plugin_name, strings.Replace(s[1], "|", " ", -1))
-			if ret == false {
-				sendMsgToClient(ws, "not init")
-			}
-		default:
-			sendMsgToClient(ws, "cmd error")
-		}
-	}
-}
-
-func sendMsgToClient(ws *websocket.Conn, info string) {
-	if ws != nil {
-		ws.WriteMessage(TextMessage, []byte(info))
-		// if encodeType == "0" {
-		//     msg := "0##" + info
-		//     ws.WriteMessage(TextMessage, []byte(msg))
-		// } else if encodeType == "1"{
-		//     msg := "1##" + base64Encode(info)
-		//     ws.WriteMessage(TextMessage, []byte(msg))
-		// }
-	}
-}
-
-func SendMsgToClient(plugin_name string, msg string) {
-	if _, ok := listClient[plugin_name]; ok != false {
-		if listClient[plugin_name].conn != nil {
-			sendMsg := plugin_name + "::" + msg
-			sendMsgToClient(listClient[plugin_name].conn, sendMsg)
-		} else {
-			Logger.Warning("conn destroyed")
-		}
-	}
-}
-
-func websocketServer() {
-	Logger.Info("websocketServer running")
-	flag.Parse()
-	handler := http.HandlerFunc(echo)
-	http.Handle("/", handler)
-	srv = &http.Server{
-		Addr:    ":59421",
-		Handler: handler,
-	}
-
-	go func() {
-		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
-		}
-
-	}()
-}
-
-func InitWebsocket() {
-	OsName = runtime.GOOS
-	Logger.Infof("OsName:%s", OsName)
-
-	EnsureFirewall("mierpluginsmanager", os.Args[0])
-	websocketServer()
-}
-
-func ExitWebsocket() {
-	for pluginName := range listClient {
-		PluginExit(pluginName)
-	}
-
-	if err := srv.Shutdown(nil); err != nil {
-		panic(err)
-	}
-
-	Logger.Info("srv.Shutdown")
-	exit = true
-}
-*/
-
-// type WSListener struct {
-// }
-
-// func (wsl *WSListener) Accept() (net.Conn, error) {
-// 	return nil, nil
-// }
-
-// func (wsl *WSListener) Close() error {
-// 	return nil
-// }
-
-// func (wsl *WSListener) Addr() net.Addr {
-// 	return nil
-// }
-
-// func ListenWS() *WSListener {
-// 	wsl := &WSListener{}
-// 	return wsl
-// }
 
 // websocket的Listener和Conn需要分别满足以下两个接口
 var l net.Listener
 var c io.ReadWriteCloser
 
-func Listen(netName, addr string) (net.Listener, error) {
-	return net.Listen("tcp4", "127.0.0.1:9999")
+// func Listen(netName, addr string) (net.Listener, error) {
+// 	return net.Listen("tcp4", addr)
+// }
+
+
+func Listen(netName, addr string) (*WSListener, error) {
+	// wsl := &WSListener{}
+	wsl := new(WSListener)
+	wsl.init(netName, addr)
+	return wsl, nil
 }
 
 type WSListener struct {
+	srv *http.Server
+	ctx context.Context
+	cancel context.CancelFunc
+	c *WSConn
 }
 
+var upgrader = websocket.Upgrader{  
+	ReadBufferSize: 64,
+	WriteBufferSize: 128,
+	HandshakeTimeout: 50 * time.Second,
+}
+
+func (wsl *WSListener) echo(w http.ResponseWriter, r *http.Request) {
+	ws, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		fmt.Printf("websocket upgrader.Upgrade error: %v\n", err)
+		return
+	}
+
+	wsl.c = new(WSConn)
+	wsl.c.conn = ws
+	wsl.cancel()
+}
+
+func (wsl *WSListener) init (cmd, addr string) error {
+    handler := http.HandlerFunc(wsl.echo)
+	http.Handle(fmt.Sprintf("/%s", cmd), handler)
+	wsl.srv = &http.Server{
+        Addr:    addr,
+        Handler: handler,
+	}
+	
+	var ret error = nil
+    go func() {
+        if err := wsl.srv.ListenAndServe(); err != http.ErrServerClosed {
+			fmt.Printf("ListenAndServe: err%v\n", err)
+			ret = err
+			return
+        }
+
+	}()
+
+	return ret
+}
+
+// func (wsl *WSListener) init (cmd, addr string) {
+// 	flag.Parse()
+// 	var address = flag.String("addr", addr, "http service address")
+// 	http.HandleFunc(fmt.Sprintf("/%s", cmd), wsl.echo)
+// 	http.ListenAndServe(*address, nil)
+	
+//     // go func() {
+// 	// 	http.ListenAndServe(*address, nil)
+// 	// }()
+// }
+
 // Accept waits for and returns the next connection to the listener.
-func (wsl *WSListener) Accept() (net.Conn, error) {
-	return nil, nil
+func (wsl *WSListener) Accept() (*WSConn, error) {
+	wsl.ctx, wsl.cancel = context.WithCancel(context.Background())
+	for{
+		select {
+			case <-wsl.ctx.Done():
+				return wsl.c, nil
+			default:
+				continue
+		}
+	}
 }
 
 // Close closes the listener.
 // Any blocked Accept operations will be unblocked and return errors.
 func (wsl *WSListener) Close() error {
+	wsl.c.Close()
 	return nil
 }
 
@@ -247,15 +112,29 @@ func (wsl *WSListener) Addr() net.Addr {
 }
 
 type WSConn struct {
+	conn *websocket.Conn
 }
 
 func (wsc *WSConn) Read(p []byte) (n int, err error) {
-	return 0, nil
+	_, message, err := wsc.conn.ReadMessage()
+	if err != nil {
+		fmt.Printf("Read err %v\n", err)
+		return 0, err
+	}
+
+	copy(p, string(message))
+	return bytes.Count(message, nil)-1, nil
 }
 
 func (wsc *WSConn) Write(p []byte) (n int, err error) {
-	return 0, nil
+	ret := wsc.conn.WriteMessage(websocket.TextMessage, p)
+	if ret!= nil {
+		fmt.Printf("Write err %v\n", err)
+		return 0, ret
+	}
+
+	return bytes.Count(p, nil)-1, nil
 }
 func (wsc *WSConn) Close() error {
-	return nil
+	return wsc.conn.Close()
 }
