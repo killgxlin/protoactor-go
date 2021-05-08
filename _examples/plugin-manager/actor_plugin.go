@@ -133,7 +133,6 @@ func (pa *PluginActor) Receive(context actor.Context) {
 		}
 		pa.conn = msg.conn
 		if pa.conn != nil {
-			log.Println("-----------")
 			go func() {
 				defer func() {
 					context.Request(context.Self(), &evtPluginConn{})

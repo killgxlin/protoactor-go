@@ -1,9 +1,6 @@
 package main
 
 import (
-	"fmt"
-	"log"
-
 	"github.com/AsynkronIT/protoactor-go/actor"
 	"github.com/AsynkronIT/protoactor-go/actor/middleware"
 )
@@ -13,7 +10,7 @@ type MierServiceActor struct {
 }
 
 func (msa *MierServiceActor) Receive(context actor.Context) {
-	switch msg := context.Message().(type) {
+	switch context.Message().(type) {
 	case *actor.Started:
 		{
 			props := actor.PropsFromProducer(func() actor.Actor { return &CliManagerActor{} }).WithReceiverMiddleware(middleware.Logger)
@@ -29,13 +26,5 @@ func (msa *MierServiceActor) Receive(context actor.Context) {
 	case *actor.Stopping:
 	case *actor.Stopped:
 	case *actor.Restarting:
-	case string:
-		switch msg {
-		case "init":
-			fmt.Printf("Hello %v\n", msg)
-			context.Respond("ok")
-		default:
-			log.Fatalln("unknown message:", msg)
-		}
 	}
 }

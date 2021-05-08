@@ -181,10 +181,13 @@ func (cma *CliManagerActor) Receive(context actor.Context) {
 		panicOnErr(e)
 		cma.w.Add(1)
 		go func() {
-			defer context.Poison(context.Self())
-			defer cma.w.Done()
+			defer func() {
+				context.Poison(context.Self())
+				cma.w.Done()
+			}()
 			for {
 				c, e := cma.l.Accept()
+
 				if e != nil {
 					return
 				}

@@ -12,7 +12,7 @@ import (
 )
 
 func Listen(netName, addr string) (net.Listener, error) {
-	if (netName == "tcp4") {
+	if netName == "tcp4" {
 		return net.Listen("tcp4", addr)
 	}
 
@@ -43,7 +43,7 @@ func (wsl *WSListener) echo(w http.ResponseWriter, r *http.Request) {
 
 	c := new(WSConn)
 	c.conn = ws
-	wsl.c = c 
+	wsl.c = c
 	wsl.cancel()
 }
 
@@ -74,7 +74,11 @@ func (wsl *WSListener) Accept() (net.Conn, error) {
 	for {
 		select {
 		case <-wsl.ctx.Done():
-			return wsl.c, nil
+			err := fmt.Errorf("canceled")
+			if wsl.c != nil {
+				err = nil
+			}
+			return wsl.c, err
 		default:
 			continue
 		}
@@ -84,7 +88,13 @@ func (wsl *WSListener) Accept() (net.Conn, error) {
 // Close closes the listener.
 // Any blocked Accept operations will be unblocked and return errors.
 func (wsl *WSListener) Close() error {
-	wsl.c.Close()
+	if wsl.c != nil {
+		wsl.c.Close()
+	}
+	if wsl.cancel != nil {
+		wsl.cancel()
+	}
+
 	return nil
 }
 

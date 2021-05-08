@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 
+	console "github.com/AsynkronIT/goconsole"
 	"github.com/AsynkronIT/protoactor-go/actor"
 	"github.com/AsynkronIT/protoactor-go/actor/middleware"
 	"github.com/AsynkronIT/protoactor-go/eventstream"
@@ -35,9 +36,7 @@ func (p *program) Start(s service.Service) error {
 	mierSvcPid = pid
 	return nil
 }
-func (p *program) run() {
-	// Do work here
-}
+
 func (p *program) Stop(s service.Service) error {
 	if mierSvcPid == nil {
 		return fmt.Errorf("mier service actor is not started")
@@ -53,8 +52,15 @@ func main() {
 		DisplayName: "xiaomi plugins manage service",
 		Description: "This is xiaomi plugins manage service.",
 	}
-
 	prg := &program{}
+
+	if len(os.Args) == 1 {
+		prg.Start(nil)
+		console.ReadLine()
+		prg.Stop(nil)
+		return
+	}
+
 	s, err := service.New(prg, svcConfig)
 	if err != nil {
 		log.Fatal(err)
@@ -62,14 +68,6 @@ func main() {
 	logger, err := s.Logger(nil)
 	if err != nil {
 		log.Fatal(err)
-	}
-
-	if len(os.Args) == 1 {
-		err = s.Run()
-		if err != nil {
-			logger.Error(err)
-		}
-		return
 	}
 
 	switch os.Args[1] {
