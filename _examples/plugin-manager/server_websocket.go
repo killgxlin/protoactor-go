@@ -1,44 +1,36 @@
 package main
 
 import (
-	"io"
+	"bytes"
+	"context"
+	"fmt"
 	"net"
 	"net/http"
-    "context"
-	"fmt"
-	"bytes"
-	// "flag"
 	"time"
 
 	"github.com/gorilla/websocket"
 )
 
-// websocket的Listener和Conn需要分别满足以下两个接口
-var l net.Listener
-var c io.ReadWriteCloser
+func Listen(netName, addr string) (net.Listener, error) {
+	if (netName == "tcp4") {
+		return net.Listen("tcp4", addr)
+	}
 
-// func Listen(netName, addr string) (net.Listener, error) {
-// 	return net.Listen("tcp4", addr)
-// }
-
-
-func Listen(netName, addr string) (*WSListener, error) {
-	// wsl := &WSListener{}
 	wsl := new(WSListener)
 	wsl.init(netName, addr)
 	return wsl, nil
 }
 
 type WSListener struct {
-	srv *http.Server
-	ctx context.Context
+	srv    *http.Server
+	ctx    context.Context
 	cancel context.CancelFunc
-	c *WSConn
+	c      net.Conn
 }
 
-var upgrader = websocket.Upgrader{  
-	ReadBufferSize: 64,
-	WriteBufferSize: 128,
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:   256,
+	WriteBufferSize:  256,
 	HandshakeTimeout: 50 * time.Second,
 }
 
@@ -49,26 +41,27 @@ func (wsl *WSListener) echo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wsl.c = new(WSConn)
-	wsl.c.conn = ws
+	c := new(WSConn)
+	c.conn = ws
+	wsl.c = c 
 	wsl.cancel()
 }
 
-func (wsl *WSListener) init (cmd, addr string) error {
-    handler := http.HandlerFunc(wsl.echo)
+func (wsl *WSListener) init(cmd, addr string) error {
+	handler := http.HandlerFunc(wsl.echo)
 	http.Handle(fmt.Sprintf("/%s", cmd), handler)
 	wsl.srv = &http.Server{
-        Addr:    addr,
-        Handler: handler,
+		Addr:    addr,
+		Handler: handler,
 	}
-	
+
 	var ret error = nil
-    go func() {
-        if err := wsl.srv.ListenAndServe(); err != http.ErrServerClosed {
+	go func() {
+		if err := wsl.srv.ListenAndServe(); err != http.ErrServerClosed {
 			fmt.Printf("ListenAndServe: err%v\n", err)
 			ret = err
 			return
-        }
+		}
 
 	}()
 
@@ -76,14 +69,14 @@ func (wsl *WSListener) init (cmd, addr string) error {
 }
 
 // Accept waits for and returns the next connection to the listener.
-func (wsl *WSListener) Accept() (*WSConn, error) {
+func (wsl *WSListener) Accept() (net.Conn, error) {
 	wsl.ctx, wsl.cancel = context.WithCancel(context.Background())
-	for{
+	for {
 		select {
-			case <-wsl.ctx.Done():
-				return wsl.c, nil
-			default:
-				continue
+		case <-wsl.ctx.Done():
+			return wsl.c, nil
+		default:
+			continue
 		}
 	}
 }
@@ -112,18 +105,35 @@ func (wsc *WSConn) Read(p []byte) (n int, err error) {
 	}
 
 	copy(p, string(message))
-	return bytes.Count(message, nil)-1, nil
+	return bytes.Count(message, nil) - 1, nil
 }
 
 func (wsc *WSConn) Write(p []byte) (n int, err error) {
 	ret := wsc.conn.WriteMessage(websocket.TextMessage, p)
-	if ret!= nil {
+	if ret != nil {
 		fmt.Printf("Write err %v\n", err)
 		return 0, ret
 	}
 
-	return bytes.Count(p, nil)-1, nil
+	return bytes.Count(p, nil) - 1, nil
 }
 func (wsc *WSConn) Close() error {
 	return wsc.conn.Close()
+}
+
+func (wsc *WSConn) LocalAddr() net.Addr {
+	return wsc.conn.LocalAddr()
+}
+func (wsc *WSConn) RemoteAddr() net.Addr {
+	return wsc.conn.RemoteAddr()
+}
+
+func (wsc *WSConn) SetDeadline(t time.Time) error {
+	return nil
+}
+func (wsc *WSConn) SetReadDeadline(t time.Time) error {
+	return nil
+}
+func (wsc *WSConn) SetWriteDeadline(t time.Time) error {
+	return nil
 }

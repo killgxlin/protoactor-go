@@ -1,9 +1,9 @@
 package main
 
 import (
-	// "net"
 	"bufio"
 	"log"
+	"net"
 	"strings"
 	"sync"
 
@@ -16,8 +16,7 @@ import (
 type CliSessionActor struct {
 	sub       *eventstream.Subscription
 	binds     map[string]bool
-	c         *WSConn
-	// c         net.Conn
+	c         net.Conn
 	curPlugin string
 }
 
@@ -168,8 +167,7 @@ func (csa *CliSessionActor) Receive(context actor.Context) {
 
 // --------------------------------------------------------------------------------
 type CliManagerActor struct {
-	l *WSListener
-	// l net.Listener
+	l net.Listener
 	w sync.WaitGroup
 }
 

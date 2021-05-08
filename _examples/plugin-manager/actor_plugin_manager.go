@@ -1,9 +1,9 @@
 package main
 
 import (
-	// "net"
 	"bufio"
 	"log"
+	"net"
 	"strconv"
 	"strings"
 
@@ -21,15 +21,14 @@ var pluginConfigs = map[string]*PluginConfig{
 		binPath: "./plugins/plugin.exe",
 	},
 	"wireguard": {
-		binPath: "./plugins/plugin.exe",
+		binPath: "./plugins/wgVpn/win/wgVPN.exe",
 	},
 }
 
 // --------------------------------------------------------------------------------
 type PluginManagerActor struct {
 	pluginPIDs map[string]*actor.PID
-	l *WSListener
-	// l net.Listener
+	l          net.Listener
 }
 
 func (pma *PluginManagerActor) Receive(context actor.Context) {
@@ -38,7 +37,7 @@ func (pma *PluginManagerActor) Receive(context actor.Context) {
 		addr, err := findAvailableAddr(9000, 9999)
 		panicOnErr(err)
 		log.Println("found available addr for pma", addr)
-		l, e := Listen("pm", addr)
+		l, e := Listen("tcp4", addr)
 		panicOnErr(e)
 
 		port, _ := strconv.ParseInt(strings.Split(addr, ":")[1], 10, 64)
