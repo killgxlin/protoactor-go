@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -15,17 +14,33 @@ func Listen(netName, addr string) (net.Listener, error) {
 	if netName == "tcp4" {
 		return net.Listen("tcp4", addr)
 	}
+	return listen(netName, addr)
+}
 
+func listen(netName, addr string) (net.Listener, error) {
 	wsl := new(WSListener)
-	wsl.init(netName, addr)
+
+	handler := http.HandlerFunc(wsl.echo)
+	http.Handle(fmt.Sprintf("/%s", netName), handler)
+	wsl.srv = &http.Server{
+		Addr:    addr,
+		Handler: handler,
+	}
+	wsl.ch = make(chan *websocket.Conn)
+
+	go func() {
+		defer close(wsl.ch)
+		if err := wsl.srv.ListenAndServe(); err != http.ErrServerClosed {
+			panicOnErr(err)
+		}
+	}()
+
 	return wsl, nil
 }
 
 type WSListener struct {
-	srv    *http.Server
-	ctx    context.Context
-	cancel context.CancelFunc
-	c      net.Conn
+	srv *http.Server
+	ch  chan *websocket.Conn
 }
 
 var upgrader = websocket.Upgrader{
@@ -40,65 +55,22 @@ func (wsl *WSListener) echo(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("websocket upgrader.Upgrade error: %v\n", err)
 		return
 	}
-
-	c := new(WSConn)
-	c.conn = ws
-	wsl.c = c
-	wsl.cancel()
+	wsl.ch <- ws
 }
 
-func (wsl *WSListener) init(cmd, addr string) error {
-	handler := http.HandlerFunc(wsl.echo)
-	http.Handle(fmt.Sprintf("/%s", cmd), handler)
-	wsl.srv = &http.Server{
-		Addr:    addr,
-		Handler: handler,
-	}
-
-	var ret error = nil
-	go func() {
-		if err := wsl.srv.ListenAndServe(); err != http.ErrServerClosed {
-			fmt.Printf("ListenAndServe: err%v\n", err)
-			ret = err
-			return
-		}
-
-	}()
-
-	return ret
-}
-
-// Accept waits for and returns the next connection to the listener.
 func (wsl *WSListener) Accept() (net.Conn, error) {
-	wsl.ctx, wsl.cancel = context.WithCancel(context.Background())
-	for {
-		select {
-		case <-wsl.ctx.Done():
-			err := fmt.Errorf("canceled")
-			if wsl.c != nil {
-				err = nil
-			}
-			return wsl.c, err
-		default:
-			continue
-		}
+	ws, ok := <-wsl.ch
+	if !ok {
+		return nil, fmt.Errorf("Listenr closed")
 	}
+	return &WSConn{conn: ws}, nil
 }
 
-// Close closes the listener.
-// Any blocked Accept operations will be unblocked and return errors.
 func (wsl *WSListener) Close() error {
-	if wsl.c != nil {
-		wsl.c.Close()
-	}
-	if wsl.cancel != nil {
-		wsl.cancel()
-	}
-
+	wsl.srv.Close()
 	return nil
 }
 
-// Addr returns the listener's network address.
 func (wsl *WSListener) Addr() net.Addr {
 	return nil
 }
